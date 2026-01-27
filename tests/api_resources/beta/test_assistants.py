@@ -34,24 +34,25 @@ class TestAssistants:
             model="gpt-4o",
             description="description",
             instructions="instructions",
-            metadata={},
+            metadata={"foo": "string"},
             name="name",
+            reasoning_effort="none",
             response_format="auto",
             temperature=1,
             tool_resources={
-                "code_interpreter": {"file_ids": ["string", "string", "string"]},
+                "code_interpreter": {"file_ids": ["string"]},
                 "file_search": {
                     "vector_store_ids": ["string"],
                     "vector_stores": [
                         {
-                            "file_ids": ["string", "string", "string"],
                             "chunking_strategy": {"type": "auto"},
-                            "metadata": {},
+                            "file_ids": ["string"],
+                            "metadata": {"foo": "string"},
                         }
                     ],
                 },
             },
-            tools=[{"type": "code_interpreter"}, {"type": "code_interpreter"}, {"type": "code_interpreter"}],
+            tools=[{"type": "code_interpreter"}],
             top_p=1,
         )
         assert_matches_type(Assistant, assistant, path=["response"])
@@ -131,16 +132,17 @@ class TestAssistants:
             assistant_id="assistant_id",
             description="description",
             instructions="instructions",
-            metadata={},
-            model="model",
+            metadata={"foo": "string"},
+            model="string",
             name="name",
+            reasoning_effort="none",
             response_format="auto",
             temperature=1,
             tool_resources={
-                "code_interpreter": {"file_ids": ["string", "string", "string"]},
+                "code_interpreter": {"file_ids": ["string"]},
                 "file_search": {"vector_store_ids": ["string"]},
             },
-            tools=[{"type": "code_interpreter"}, {"type": "code_interpreter"}, {"type": "code_interpreter"}],
+            tools=[{"type": "code_interpreter"}],
             top_p=1,
         )
         assert_matches_type(Assistant, assistant, path=["response"])
@@ -251,7 +253,9 @@ class TestAssistants:
 
 
 class TestAsyncAssistants:
-    parametrize = pytest.mark.parametrize("async_client", [False, True], indirect=True, ids=["loose", "strict"])
+    parametrize = pytest.mark.parametrize(
+        "async_client", [False, True, {"http_client": "aiohttp"}], indirect=True, ids=["loose", "strict", "aiohttp"]
+    )
 
     @parametrize
     async def test_method_create(self, async_client: AsyncOpenAI) -> None:
@@ -266,24 +270,25 @@ class TestAsyncAssistants:
             model="gpt-4o",
             description="description",
             instructions="instructions",
-            metadata={},
+            metadata={"foo": "string"},
             name="name",
+            reasoning_effort="none",
             response_format="auto",
             temperature=1,
             tool_resources={
-                "code_interpreter": {"file_ids": ["string", "string", "string"]},
+                "code_interpreter": {"file_ids": ["string"]},
                 "file_search": {
                     "vector_store_ids": ["string"],
                     "vector_stores": [
                         {
-                            "file_ids": ["string", "string", "string"],
                             "chunking_strategy": {"type": "auto"},
-                            "metadata": {},
+                            "file_ids": ["string"],
+                            "metadata": {"foo": "string"},
                         }
                     ],
                 },
             },
-            tools=[{"type": "code_interpreter"}, {"type": "code_interpreter"}, {"type": "code_interpreter"}],
+            tools=[{"type": "code_interpreter"}],
             top_p=1,
         )
         assert_matches_type(Assistant, assistant, path=["response"])
@@ -363,16 +368,17 @@ class TestAsyncAssistants:
             assistant_id="assistant_id",
             description="description",
             instructions="instructions",
-            metadata={},
-            model="model",
+            metadata={"foo": "string"},
+            model="string",
             name="name",
+            reasoning_effort="none",
             response_format="auto",
             temperature=1,
             tool_resources={
-                "code_interpreter": {"file_ids": ["string", "string", "string"]},
+                "code_interpreter": {"file_ids": ["string"]},
                 "file_search": {"vector_store_ids": ["string"]},
             },
-            tools=[{"type": "code_interpreter"}, {"type": "code_interpreter"}, {"type": "code_interpreter"}],
+            tools=[{"type": "code_interpreter"}],
             top_p=1,
         )
         assert_matches_type(Assistant, assistant, path=["response"])

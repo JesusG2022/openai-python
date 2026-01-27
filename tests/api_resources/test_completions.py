@@ -38,10 +38,13 @@ class TestCompletions:
             max_tokens=16,
             n=1,
             presence_penalty=-2,
-            seed=-9007199254740991,
+            seed=0,
             stop="\n",
             stream=False,
-            stream_options={"include_usage": True},
+            stream_options={
+                "include_obfuscation": True,
+                "include_usage": True,
+            },
             suffix="test.",
             temperature=1,
             top_p=1,
@@ -98,9 +101,12 @@ class TestCompletions:
             max_tokens=16,
             n=1,
             presence_penalty=-2,
-            seed=-9007199254740991,
+            seed=0,
             stop="\n",
-            stream_options={"include_usage": True},
+            stream_options={
+                "include_obfuscation": True,
+                "include_usage": True,
+            },
             suffix="test.",
             temperature=1,
             top_p=1,
@@ -137,7 +143,9 @@ class TestCompletions:
 
 
 class TestAsyncCompletions:
-    parametrize = pytest.mark.parametrize("async_client", [False, True], indirect=True, ids=["loose", "strict"])
+    parametrize = pytest.mark.parametrize(
+        "async_client", [False, True, {"http_client": "aiohttp"}], indirect=True, ids=["loose", "strict", "aiohttp"]
+    )
 
     @parametrize
     async def test_method_create_overload_1(self, async_client: AsyncOpenAI) -> None:
@@ -160,10 +168,13 @@ class TestAsyncCompletions:
             max_tokens=16,
             n=1,
             presence_penalty=-2,
-            seed=-9007199254740991,
+            seed=0,
             stop="\n",
             stream=False,
-            stream_options={"include_usage": True},
+            stream_options={
+                "include_obfuscation": True,
+                "include_usage": True,
+            },
             suffix="test.",
             temperature=1,
             top_p=1,
@@ -220,9 +231,12 @@ class TestAsyncCompletions:
             max_tokens=16,
             n=1,
             presence_penalty=-2,
-            seed=-9007199254740991,
+            seed=0,
             stop="\n",
-            stream_options={"include_usage": True},
+            stream_options={
+                "include_obfuscation": True,
+                "include_usage": True,
+            },
             suffix="test.",
             temperature=1,
             top_p=1,

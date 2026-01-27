@@ -2,7 +2,7 @@
 
 The OpenAI API supports extracting JSON from the model with the `response_format` request param, for more details on the API, see [this guide](https://platform.openai.com/docs/guides/structured-outputs).
 
-The SDK provides a `client.beta.chat.completions.parse()` method which is a wrapper over the `client.chat.completions.create()` that
+The SDK provides a `client.chat.completions.parse()` method which is a wrapper over the `client.chat.completions.create()` that
 provides richer integrations with Python specific types & returns a `ParsedChatCompletion` object, which is a subclass of the standard `ChatCompletion` class.
 
 ## Auto-parsing response content with Pydantic models
@@ -24,7 +24,7 @@ class MathResponse(BaseModel):
     final_answer: str
 
 client = OpenAI()
-completion = client.beta.chat.completions.parse(
+completion = client.chat.completions.parse(
     model="gpt-4o-2024-08-06",
     messages=[
         {"role": "system", "content": "You are a helpful math tutor."},
@@ -44,6 +44,7 @@ else:
 ## Auto-parsing function tool calls
 
 The `.parse()` method will also automatically parse `function` tool calls if:
+
 - You use the `openai.pydantic_function_tool()` helper method
 - You mark your tool schema with `"strict": True`
 
@@ -96,7 +97,7 @@ class Query(BaseModel):
     order_by: OrderBy
 
 client = openai.OpenAI()
-completion = client.beta.chat.completions.parse(
+completion = client.chat.completions.parse(
     model="gpt-4o-2024-08-06",
     messages=[
         {
@@ -121,25 +122,29 @@ print(tool_call.function.parsed_arguments.table_name)
 
 ### Differences from `.create()`
 
-The `beta.chat.completions.parse()` method imposes some additional restrictions on it's usage that `chat.completions.create()` does not. 
+The `chat.completions.parse()` method imposes some additional restrictions on it's usage that `chat.completions.create()` does not.
 
 - If the completion completes with `finish_reason` set to `length` or `content_filter`, the `LengthFinishReasonError` / `ContentFilterFinishReasonError` errors will be raised.
 - Only strict function tools can be passed, e.g. `{'type': 'function', 'function': {..., 'strict': True}}`
 
 # Streaming Helpers
 
-OpenAI supports streaming responses when interacting with the [Chat Completion] & [Assistant](#assistant-streaming-api) APIs.
+OpenAI supports streaming responses when interacting with the [Chat Completion](#chat-completions-api) & [Assistant](#assistant-streaming-api) APIs.
 
 ## Chat Completions API
 
-The SDK provides a `.beta.chat.completions.stream()` method that wraps the `.chat.completions.create(stream=True)` stream providing a more granular event API & automatic accumulation of each delta.
+The SDK provides a `.chat.completions.stream()` method that wraps the `.chat.completions.create(stream=True)` stream providing a more granular event API & automatic accumulation of each delta.
 
-It also supports all aforementioned [parsing helpers](#parsing-helpers).
+It also supports all aforementioned [parsing helpers](#structured-outputs-parsing-helpers).
 
 Unlike `.create(stream=True)`, the `.stream()` method requires usage within a context manager to prevent accidental leakage of the response:
 
 ```py
-async with client.beta.chat.completions.stream(
+from openai import AsyncOpenAI
+
+client = AsyncOpenAI()
+
+async with client.chat.completions.stream(
     model='gpt-4o-2024-08-06',
     messages=[...],
 ) as stream:
@@ -259,7 +264,7 @@ A handful of helper methods are provided on the stream class for additional conv
 Returns the accumulated `ParsedChatCompletion` object
 
 ```py
-async with client.beta.chat.completions.stream(...) as stream:
+async with client.chat.completions.stream(...) as stream:
     ...
 
 completion = await stream.get_final_completion()
@@ -271,7 +276,7 @@ print(completion.choices[0].message)
 If you want to wait for the stream to complete, you can use the `.until_done()` method.
 
 ```py
-async with client.beta.chat.completions.stream(...) as stream:
+async with client.chat.completions.stream(...) as stream:
     await stream.until_done()
     # stream is now finished
 ```
@@ -504,9 +509,10 @@ The polling methods are:
 ```python
 client.beta.threads.create_and_run_poll(...)
 client.beta.threads.runs.create_and_poll(...)
-client.beta.threads.runs.submit_tool_ouptputs_and_poll(...)
+client.beta.threads.runs.submit_tool_outputs_and_poll(...)
 client.beta.vector_stores.files.upload_and_poll(...)
 client.beta.vector_stores.files.create_and_poll(...)
 client.beta.vector_stores.file_batches.create_and_poll(...)
 client.beta.vector_stores.file_batches.upload_and_poll(...)
+client.videos.create_and_poll(...)
 ```

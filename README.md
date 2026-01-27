@@ -1,8 +1,9 @@
 # OpenAI Python API library
 
-[![PyPI version](https://img.shields.io/pypi/v/openai.svg)](https://pypi.org/project/openai/)
+<!-- prettier-ignore -->
+[![PyPI version](https://img.shields.io/pypi/v/openai.svg?label=pypi%20(stable))](https://pypi.org/project/openai/)
 
-The OpenAI Python library provides convenient access to the OpenAI REST API from any Python 3.7+
+The OpenAI Python library provides convenient access to the OpenAI REST API from any Python 3.9+
 application. The library includes type definitions for all request params and response fields,
 and offers both synchronous and asynchronous clients powered by [httpx](https://github.com/encode/httpx).
 
@@ -10,12 +11,9 @@ It is generated from our [OpenAPI specification](https://github.com/openai/opena
 
 ## Documentation
 
-The REST API documentation can be found on [platform.openai.com](https://platform.openai.com/docs). The full API of this library can be found in [api.md](api.md).
+The REST API documentation can be found on [platform.openai.com](https://platform.openai.com/docs/api-reference). The full API of this library can be found in [api.md](api.md).
 
 ## Installation
-
-> [!IMPORTANT]
-> The SDK was rewritten in v1, which was released November 6th 2023. See the [v1 migration guide](https://github.com/openai/openai-python/discussions/742), which includes scripts to automatically update your code.
 
 ```sh
 # install from PyPI
@@ -26,6 +24,8 @@ pip install openai
 
 The full API of this library can be found in [api.md](api.md).
 
+The primary API for interacting with OpenAI models is the [Responses API](https://platform.openai.com/docs/api-reference/responses). You can generate text from the model with the code below.
+
 ```python
 import os
 from openai import OpenAI
@@ -35,71 +35,89 @@ client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
 )
 
-chat_completion = client.chat.completions.create(
+response = client.responses.create(
+    model="gpt-4o",
+    instructions="You are a coding assistant that talks like a pirate.",
+    input="How do I check if a Python object is an instance of a class?",
+)
+
+print(response.output_text)
+```
+
+The previous standard (supported indefinitely) for generating text is the [Chat Completions API](https://platform.openai.com/docs/api-reference/chat). You can use that API to generate text from the model with the code below.
+
+```python
+from openai import OpenAI
+
+client = OpenAI()
+
+completion = client.chat.completions.create(
+    model="gpt-4o",
     messages=[
+        {"role": "developer", "content": "Talk like a pirate."},
         {
             "role": "user",
-            "content": "Say this is a test",
-        }
+            "content": "How do I check if a Python object is an instance of a class?",
+        },
     ],
-    model="gpt-3.5-turbo",
 )
+
+print(completion.choices[0].message.content)
 ```
 
 While you can provide an `api_key` keyword argument,
 we recommend using [python-dotenv](https://pypi.org/project/python-dotenv/)
 to add `OPENAI_API_KEY="My API Key"` to your `.env` file
-so that your API Key is not stored in source control.
+so that your API key is not stored in source control.
+[Get an API key here](https://platform.openai.com/settings/organization/api-keys).
 
-### Polling Helpers
+### Vision
 
-When interacting with the API some actions such as starting a Run and adding files to vector stores are asynchronous and take time to complete. The SDK includes
-helper functions which will poll the status until it reaches a terminal state and then return the resulting object.
-If an API method results in an action that could benefit from polling there will be a corresponding version of the
-method ending in '\_and_poll'.
-
-For instance to create a Run and poll until it reaches a terminal state you can run:
+With an image URL:
 
 ```python
-run = client.beta.threads.runs.create_and_poll(
-    thread_id=thread.id,
-    assistant_id=assistant.id,
+prompt = "What is in this image?"
+img_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/2023_06_08_Raccoon1.jpg/1599px-2023_06_08_Raccoon1.jpg"
+
+response = client.responses.create(
+    model="gpt-4o-mini",
+    input=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": f"{img_url}"},
+            ],
+        }
+    ],
 )
 ```
 
-More information on the lifecycle of a Run can be found in the [Run Lifecycle Documentation](https://platform.openai.com/docs/assistants/how-it-works/run-lifecycle)
-
-### Bulk Upload Helpers
-
-When creating and interacting with vector stores, you can use polling helpers to monitor the status of operations.
-For convenience, we also provide a bulk upload helper to allow you to simultaneously upload several files at once.
+With the image as a base64 encoded string:
 
 ```python
-sample_files = [Path("sample-paper.pdf"), ...]
+import base64
+from openai import OpenAI
 
-batch = await client.vector_stores.file_batches.upload_and_poll(
-    store.id,
-    files=sample_files,
+client = OpenAI()
+
+prompt = "What is in this image?"
+with open("path/to/image.png", "rb") as image_file:
+    b64_image = base64.b64encode(image_file.read()).decode("utf-8")
+
+response = client.responses.create(
+    model="gpt-4o-mini",
+    input=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": f"data:image/png;base64,{b64_image}"},
+            ],
+        }
+    ],
 )
 ```
-
-### Streaming Helpers
-
-The SDK also includes helpers to process streams and handle incoming events.
-
-```python
-with client.beta.threads.runs.stream(
-    thread_id=thread.id,
-    assistant_id=assistant.id,
-    instructions="Please address the user as Jane Doe. The user has a premium account.",
-) as stream:
-    for event in stream:
-        # Print the text from text delta events
-        if event.type == "thread.message.delta" and event.data.delta.content:
-            print(event.data.delta.content[0].text)
-```
-
-More information on streaming helpers can be found in the dedicated documentation: [helpers.md](helpers.md)
 
 ## Async usage
 
@@ -117,21 +135,55 @@ client = AsyncOpenAI(
 
 
 async def main() -> None:
-    chat_completion = await client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": "Say this is a test",
-            }
-        ],
-        model="gpt-3.5-turbo",
+    response = await client.responses.create(
+        model="gpt-4o", input="Explain disestablishmentarianism to a smart five year old."
     )
+    print(response.output_text)
 
 
 asyncio.run(main())
 ```
 
 Functionality between the synchronous and asynchronous clients is otherwise identical.
+
+### With aiohttp
+
+By default, the async client uses `httpx` for HTTP requests. However, for improved concurrency performance you may also use `aiohttp` as the HTTP backend.
+
+You can enable this by installing `aiohttp`:
+
+```sh
+# install from PyPI
+pip install openai[aiohttp]
+```
+
+Then you can enable it by instantiating the client with `http_client=DefaultAioHttpClient()`:
+
+```python
+import os
+import asyncio
+from openai import DefaultAioHttpClient
+from openai import AsyncOpenAI
+
+
+async def main() -> None:
+    async with AsyncOpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),  # This is the default and can be omitted
+        http_client=DefaultAioHttpClient(),
+    ) as client:
+        chat_completion = await client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Say this is a test",
+                }
+            ],
+            model="gpt-4o",
+        )
+
+
+asyncio.run(main())
+```
 
 ## Streaming responses
 
@@ -142,75 +194,101 @@ from openai import OpenAI
 
 client = OpenAI()
 
-stream = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Say this is a test"}],
+stream = client.responses.create(
+    model="gpt-4o",
+    input="Write a one-sentence bedtime story about a unicorn.",
     stream=True,
 )
-for chunk in stream:
-    print(chunk.choices[0].delta.content or "", end="")
+
+for event in stream:
+    print(event)
 ```
 
 The async client uses the exact same interface.
 
 ```python
+import asyncio
 from openai import AsyncOpenAI
 
 client = AsyncOpenAI()
 
 
 async def main():
-    stream = await client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": "Say this is a test"}],
+    stream = await client.responses.create(
+        model="gpt-4o",
+        input="Write a one-sentence bedtime story about a unicorn.",
         stream=True,
     )
-    async for chunk in stream:
-        print(chunk.choices[0].delta.content or "", end="")
+
+    async for event in stream:
+        print(event)
 
 
 asyncio.run(main())
 ```
 
-## Module-level client
+## Realtime API
 
-> [!IMPORTANT]
-> We highly recommend instantiating client instances instead of relying on the global client.
+The Realtime API enables you to build low-latency, multi-modal conversational experiences. It currently supports text and audio as both input and output, as well as [function calling](https://platform.openai.com/docs/guides/function-calling) through a WebSocket connection.
 
-We also expose a global client instance that is accessible in a similar fashion to versions prior to v1.
+Under the hood the SDK uses the [`websockets`](https://websockets.readthedocs.io/en/stable/) library to manage connections.
+
+The Realtime API works through a combination of client-sent events and server-sent events. Clients can send events to do things like update session configuration or send text and audio inputs. Server events confirm when audio responses have completed, or when a text response from the model has been received. A full event reference can be found [here](https://platform.openai.com/docs/api-reference/realtime-client-events) and a guide can be found [here](https://platform.openai.com/docs/guides/realtime).
+
+Basic text based example:
 
 ```py
-import openai
+import asyncio
+from openai import AsyncOpenAI
 
-# optional; defaults to `os.environ['OPENAI_API_KEY']`
-openai.api_key = '...'
+async def main():
+    client = AsyncOpenAI()
 
-# all client options can be configured just like the `OpenAI` instantiation counterpart
-openai.base_url = "https://..."
-openai.default_headers = {"x-foo": "true"}
+    async with client.realtime.connect(model="gpt-realtime") as connection:
+        await connection.session.update(
+            session={"type": "realtime", "output_modalities": ["text"]}
+        )
 
-completion = openai.chat.completions.create(
-    model="gpt-4",
-    messages=[
-        {
-            "role": "user",
-            "content": "How do I output all files in a directory using Python?",
-        },
-    ],
-)
-print(completion.choices[0].message.content)
+        await connection.conversation.item.create(
+            item={
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Say hello!"}],
+            }
+        )
+        await connection.response.create()
+
+        async for event in connection:
+            if event.type == "response.output_text.delta":
+                print(event.delta, flush=True, end="")
+
+            elif event.type == "response.output_text.done":
+                print()
+
+            elif event.type == "response.done":
+                break
+
+asyncio.run(main())
 ```
 
-The API is the exact same as the standard client instance-based API.
+However the real magic of the Realtime API is handling audio inputs / outputs, see this example [TUI script](https://github.com/openai/openai-python/blob/main/examples/realtime/push_to_talk_app.py) for a fully fledged example.
 
-This is intended to be used within REPLs or notebooks for faster iteration, **not** in application code.
+### Realtime error handling
 
-We recommend that you always instantiate a client (e.g., with `client = OpenAI()`) in application code because:
+Whenever an error occurs, the Realtime API will send an [`error` event](https://platform.openai.com/docs/guides/realtime-model-capabilities#error-handling) and the connection will stay open and remain usable. This means you need to handle it yourself, as _no errors are raised directly_ by the SDK when an `error` event comes in.
 
-- It can be difficult to reason about where client options are configured
-- It's not possible to change certain client options without potentially causing race conditions
-- It's harder to mock for testing purposes
-- It's not possible to control cleanup of network connections
+```py
+client = AsyncOpenAI()
+
+async with client.realtime.connect(model="gpt-realtime") as connection:
+    ...
+    async for event in connection:
+        if event.type == 'error':
+            print(event.error.type)
+            print(event.error.code)
+            print(event.error.event_id)
+            print(event.error.message)
+```
 
 ## Using types
 
@@ -301,21 +379,21 @@ from openai import OpenAI
 
 client = OpenAI()
 
-completion = client.chat.completions.create(
-    messages=[
+response = client.chat.responses.create(
+    input=[
         {
             "role": "user",
-            "content": "Can you generate an example json object describing a fruit?",
+            "content": "How much ?",
         }
     ],
-    model="gpt-3.5-turbo-1106",
+    model="gpt-4o",
     response_format={"type": "json_object"},
 )
 ```
 
 ## File uploads
 
-Request parameters that correspond to file uploads can be passed as `bytes`, a [`PathLike`](https://docs.python.org/3/library/os.html#os.PathLike) instance or a tuple of `(filename, contents, media type)`.
+Request parameters that correspond to file uploads can be passed as `bytes`, or a [`PathLike`](https://docs.python.org/3/library/os.html#os.PathLike) instance or a tuple of `(filename, contents, media type)`.
 
 ```python
 from pathlib import Path
@@ -330,6 +408,86 @@ client.files.create(
 ```
 
 The async client uses the exact same interface. If you pass a [`PathLike`](https://docs.python.org/3/library/os.html#os.PathLike) instance, the file contents will be read asynchronously automatically.
+
+## Webhook Verification
+
+Verifying webhook signatures is _optional but encouraged_.
+
+For more information about webhooks, see [the API docs](https://platform.openai.com/docs/guides/webhooks).
+
+### Parsing webhook payloads
+
+For most use cases, you will likely want to verify the webhook and parse the payload at the same time. To achieve this, we provide the method `client.webhooks.unwrap()`, which parses a webhook request and verifies that it was sent by OpenAI. This method will raise an error if the signature is invalid.
+
+Note that the `body` parameter must be the raw JSON string sent from the server (do not parse it first). The `.unwrap()` method will parse this JSON for you into an event object after verifying the webhook was sent from OpenAI.
+
+```python
+from openai import OpenAI
+from flask import Flask, request
+
+app = Flask(__name__)
+client = OpenAI()  # OPENAI_WEBHOOK_SECRET environment variable is used by default
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    request_body = request.get_data(as_text=True)
+
+    try:
+        event = client.webhooks.unwrap(request_body, request.headers)
+
+        if event.type == "response.completed":
+            print("Response completed:", event.data)
+        elif event.type == "response.failed":
+            print("Response failed:", event.data)
+        else:
+            print("Unhandled event type:", event.type)
+
+        return "ok"
+    except Exception as e:
+        print("Invalid signature:", e)
+        return "Invalid signature", 400
+
+
+if __name__ == "__main__":
+    app.run(port=8000)
+```
+
+### Verifying webhook payloads directly
+
+In some cases, you may want to verify the webhook separately from parsing the payload. If you prefer to handle these steps separately, we provide the method `client.webhooks.verify_signature()` to _only verify_ the signature of a webhook request. Like `.unwrap()`, this method will raise an error if the signature is invalid.
+
+Note that the `body` parameter must be the raw JSON string sent from the server (do not parse it first). You will then need to parse the body after verifying the signature.
+
+```python
+import json
+from openai import OpenAI
+from flask import Flask, request
+
+app = Flask(__name__)
+client = OpenAI()  # OPENAI_WEBHOOK_SECRET environment variable is used by default
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    request_body = request.get_data(as_text=True)
+
+    try:
+        client.webhooks.verify_signature(request_body, request.headers)
+
+        # Parse the body after verification
+        event = json.loads(request_body)
+        print("Verified event:", event)
+
+        return "ok"
+    except Exception as e:
+        print("Invalid signature:", e)
+        return "Invalid signature", 400
+
+
+if __name__ == "__main__":
+    app.run(port=8000)
+```
 
 ## Handling errors
 
@@ -348,7 +506,7 @@ client = OpenAI()
 
 try:
     client.fine_tuning.jobs.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         training_file="file-abc123",
     )
 except openai.APIConnectionError as e:
@@ -362,7 +520,7 @@ except openai.APIStatusError as e:
     print(e.response)
 ```
 
-Error codes are as followed:
+Error codes are as follows:
 
 | Status Code | Error Type                 |
 | ----------- | -------------------------- |
@@ -375,7 +533,40 @@ Error codes are as followed:
 | >=500       | `InternalServerError`      |
 | N/A         | `APIConnectionError`       |
 
-### Retries
+## Request IDs
+
+> For more information on debugging requests, see [these docs](https://platform.openai.com/docs/api-reference/debugging-requests)
+
+All object responses in the SDK provide a `_request_id` property which is added from the `x-request-id` response header so that you can quickly log failing requests and report them back to OpenAI.
+
+```python
+response = await client.responses.create(
+    model="gpt-4o-mini",
+    input="Say 'this is a test'.",
+)
+print(response._request_id)  # req_123
+```
+
+Note that unlike other properties that use an `_` prefix, the `_request_id` property
+_is_ public. Unless documented otherwise, _all_ other `_` prefix properties,
+methods and modules are _private_.
+
+> [!IMPORTANT]  
+> If you need to access request IDs for failed requests you must catch the `APIStatusError` exception
+
+```python
+import openai
+
+try:
+    completion = await client.chat.completions.create(
+        messages=[{"role": "user", "content": "Say this is a test"}], model="gpt-4"
+    )
+except openai.APIStatusError as exc:
+    print(exc.request_id)  # req_123
+    raise exc
+```
+
+## Retries
 
 Certain errors are automatically retried 2 times by default, with a short exponential backoff.
 Connection errors (for example, due to a network connectivity problem), 408 Request Timeout, 409 Conflict,
@@ -397,17 +588,17 @@ client.with_options(max_retries=5).chat.completions.create(
     messages=[
         {
             "role": "user",
-            "content": "How can I get the name of the current day in Node.js?",
+            "content": "How can I get the name of the current day in JavaScript?",
         }
     ],
-    model="gpt-3.5-turbo",
+    model="gpt-4o",
 )
 ```
 
-### Timeouts
+## Timeouts
 
 By default requests time out after 10 minutes. You can configure this with a `timeout` option,
-which accepts a float or an [`httpx.Timeout`](https://www.python-httpx.org/advanced/#fine-tuning-the-configuration) object:
+which accepts a float or an [`httpx.Timeout`](https://www.python-httpx.org/advanced/timeouts/#fine-tuning-the-configuration) object:
 
 ```python
 from openai import OpenAI
@@ -431,7 +622,7 @@ client.with_options(timeout=5.0).chat.completions.create(
             "content": "How can I list all files in a directory using Python?",
         }
     ],
-    model="gpt-3.5-turbo",
+    model="gpt-4o",
 )
 ```
 
@@ -445,11 +636,13 @@ Note that requests that time out are [retried twice by default](#retries).
 
 We use the standard library [`logging`](https://docs.python.org/3/library/logging.html) module.
 
-You can enable logging by setting the environment variable `OPENAI_LOG` to `debug`.
+You can enable logging by setting the environment variable `OPENAI_LOG` to `info`.
 
 ```shell
-$ export OPENAI_LOG=debug
+$ export OPENAI_LOG=info
 ```
+
+Or to `debug` for more verbose logging.
 
 ### How to tell whether `None` means `null` or missing
 
@@ -476,7 +669,7 @@ response = client.chat.completions.with_raw_response.create(
         "role": "user",
         "content": "Say this is a test",
     }],
-    model="gpt-3.5-turbo",
+    model="gpt-4o",
 )
 print(response.headers.get('X-My-Header'))
 
@@ -484,7 +677,7 @@ completion = response.parse()  # get the object that `chat.completions.create()`
 print(completion)
 ```
 
-These methods return an [`LegacyAPIResponse`](https://github.com/openai/openai-python/tree/main/src/openai/_legacy_response.py) object. This is a legacy class as we're changing it slightly in the next major version.
+These methods return a [`LegacyAPIResponse`](https://github.com/openai/openai-python/tree/main/src/openai/_legacy_response.py) object. This is a legacy class as we're changing it slightly in the next major version.
 
 For the sync client this will mostly be the same with the exception
 of `content` & `text` will be methods instead of properties. In the
@@ -509,7 +702,7 @@ with client.chat.completions.with_streaming_response.create(
             "content": "Say this is a test",
         }
     ],
-    model="gpt-3.5-turbo",
+    model="gpt-4o",
 ) as response:
     print(response.headers.get("X-My-Header"))
 
@@ -528,8 +721,7 @@ If you need to access undocumented endpoints, params, or response properties, th
 #### Undocumented endpoints
 
 To make requests to undocumented endpoints, you can make requests using `client.get`, `client.post`, and other
-http verbs. Options on the client will be respected (such as retries) will be respected when making this
-request.
+http verbs. Options on the client will be respected (such as retries) when making this request.
 
 ```py
 import httpx
@@ -558,18 +750,19 @@ can also get all the extra fields on the Pydantic model as a dict with
 
 You can directly override the [httpx client](https://www.python-httpx.org/api/#client) to customize it for your use case, including:
 
-- Support for proxies
-- Custom transports
+- Support for [proxies](https://www.python-httpx.org/advanced/proxies/)
+- Custom [transports](https://www.python-httpx.org/advanced/transports/)
 - Additional [advanced](https://www.python-httpx.org/advanced/clients/) functionality
 
 ```python
+import httpx
 from openai import OpenAI, DefaultHttpxClient
 
 client = OpenAI(
     # Or use the `OPENAI_BASE_URL` env var
-    base_url="http://my.test.server.example.com:8083",
+    base_url="http://my.test.server.example.com:8083/v1",
     http_client=DefaultHttpxClient(
-        proxies="http://my.test.proxy.example.com",
+        proxy="http://my.test.proxy.example.com",
         transport=httpx.HTTPTransport(local_address="0.0.0.0"),
     ),
 )
@@ -584,6 +777,16 @@ client.with_options(http_client=DefaultHttpxClient(...))
 ### Managing HTTP resources
 
 By default the library closes underlying HTTP connections whenever the client is [garbage collected](https://docs.python.org/3/reference/datamodel.html#object.__del__). You can manually close the client using the `.close()` method if desired, or with a context manager that closes when exiting.
+
+```py
+from openai import OpenAI
+
+with OpenAI() as client:
+  # make requests here
+  ...
+
+# HTTP client is now closed
+```
 
 ## Microsoft Azure OpenAI
 
@@ -632,13 +835,28 @@ An example of using the client with Microsoft Entra ID (formerly known as Azure 
 This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) conventions, though certain backwards-incompatible changes may be released as minor versions:
 
 1. Changes that only affect static types, without breaking runtime behavior.
-2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals)_.
+2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals.)_
 3. Changes that we do not expect to impact the vast majority of users in practice.
 
 We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
 
 We are keen for your feedback; please open an [issue](https://www.github.com/openai/openai-python/issues) with questions, bugs, or suggestions.
 
+### Determining the installed version
+
+If you've upgraded to the latest version but aren't seeing any new features you were expecting then your python environment is likely still using an older version.
+
+You can determine the version that is being used at runtime with:
+
+```py
+import openai
+print(openai.__version__)
+```
+
 ## Requirements
 
-Python 3.7 or higher.
+Python 3.9 or higher.
+
+## Contributing
+
+See [the contributing documentation](./CONTRIBUTING.md).

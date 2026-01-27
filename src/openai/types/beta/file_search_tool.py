@@ -5,10 +5,33 @@ from typing_extensions import Literal
 
 from ..._models import BaseModel
 
-__all__ = ["FileSearchTool", "FileSearch"]
+__all__ = ["FileSearchTool", "FileSearch", "FileSearchRankingOptions"]
+
+
+class FileSearchRankingOptions(BaseModel):
+    """The ranking options for the file search.
+
+    If not specified, the file search tool will use the `auto` ranker and a score_threshold of 0.
+
+    See the [file search tool documentation](https://platform.openai.com/docs/assistants/tools/file-search#customizing-file-search-settings) for more information.
+    """
+
+    score_threshold: float
+    """The score threshold for the file search.
+
+    All values must be a floating point number between 0 and 1.
+    """
+
+    ranker: Optional[Literal["auto", "default_2024_08_21"]] = None
+    """The ranker to use for the file search.
+
+    If not specified will use the `auto` ranker.
+    """
 
 
 class FileSearch(BaseModel):
+    """Overrides for the file search tool."""
+
     max_num_results: Optional[int] = None
     """The maximum number of results the file search tool should output.
 
@@ -17,7 +40,18 @@ class FileSearch(BaseModel):
 
     Note that the file search tool may output fewer than `max_num_results` results.
     See the
-    [file search tool documentation](https://platform.openai.com/docs/assistants/tools/file-search/number-of-chunks-returned)
+    [file search tool documentation](https://platform.openai.com/docs/assistants/tools/file-search#customizing-file-search-settings)
+    for more information.
+    """
+
+    ranking_options: Optional[FileSearchRankingOptions] = None
+    """The ranking options for the file search.
+
+    If not specified, the file search tool will use the `auto` ranker and a
+    score_threshold of 0.
+
+    See the
+    [file search tool documentation](https://platform.openai.com/docs/assistants/tools/file-search#customizing-file-search-settings)
     for more information.
     """
 

@@ -10,14 +10,9 @@ from typing_extensions import Literal
 import httpx
 
 from .. import _legacy_response
-from ..types import file_list_params, file_create_params
-from .._types import NOT_GIVEN, Body, Query, Headers, NotGiven, FileTypes
-from .._utils import (
-    extract_files,
-    maybe_transform,
-    deepcopy_minimal,
-    async_maybe_transform,
-)
+from ..types import FilePurpose, file_list_params, file_create_params
+from .._types import Body, Omit, Query, Headers, NotGiven, FileTypes, omit, not_given
+from .._utils import extract_files, maybe_transform, deepcopy_minimal, async_maybe_transform
 from .._compat import cached_property
 from .._resource import SyncAPIResource, AsyncAPIResource
 from .._response import (
@@ -28,13 +23,11 @@ from .._response import (
     to_custom_streamed_response_wrapper,
     async_to_custom_streamed_response_wrapper,
 )
-from ..pagination import SyncPage, AsyncPage
-from .._base_client import (
-    AsyncPaginator,
-    make_request_options,
-)
+from ..pagination import SyncCursorPage, AsyncCursorPage
+from .._base_client import AsyncPaginator, make_request_options
 from ..types.file_object import FileObject
 from ..types.file_deleted import FileDeleted
+from ..types.file_purpose import FilePurpose
 
 __all__ = ["Files", "AsyncFiles"]
 
@@ -42,44 +35,55 @@ __all__ = ["Files", "AsyncFiles"]
 class Files(SyncAPIResource):
     @cached_property
     def with_raw_response(self) -> FilesWithRawResponse:
+        """
+        This property can be used as a prefix for any HTTP method call to return
+        the raw response object instead of the parsed content.
+
+        For more information, see https://www.github.com/openai/openai-python#accessing-raw-response-data-eg-headers
+        """
         return FilesWithRawResponse(self)
 
     @cached_property
     def with_streaming_response(self) -> FilesWithStreamingResponse:
+        """
+        An alternative to `.with_raw_response` that doesn't eagerly read the response body.
+
+        For more information, see https://www.github.com/openai/openai-python#with_streaming_response
+        """
         return FilesWithStreamingResponse(self)
 
     def create(
         self,
         *,
         file: FileTypes,
-        purpose: Literal["assistants", "batch", "fine-tune", "vision"],
+        purpose: FilePurpose,
+        expires_after: file_create_params.ExpiresAfter | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileObject:
         """Upload a file that can be used across various endpoints.
 
         Individual files can be
         up to 512 MB, and the size of all files uploaded by one organization can be up
-        to 100 GB.
+        to 1 TB.
 
-        The Assistants API supports files up to 2 million tokens and of specific file
-        types. See the
-        [Assistants Tools guide](https://platform.openai.com/docs/assistants/tools) for
-        details.
-
-        The Fine-tuning API only supports `.jsonl` files. The input also has certain
-        required formats for fine-tuning
-        [chat](https://platform.openai.com/docs/api-reference/fine-tuning/chat-input) or
-        [completions](https://platform.openai.com/docs/api-reference/fine-tuning/completions-input)
-        models.
-
-        The Batch API only supports `.jsonl` files up to 100 MB in size. The input also
-        has a specific required
-        [format](https://platform.openai.com/docs/api-reference/batch/request-input).
+        - The Assistants API supports files up to 2 million tokens and of specific file
+          types. See the
+          [Assistants Tools guide](https://platform.openai.com/docs/assistants/tools)
+          for details.
+        - The Fine-tuning API only supports `.jsonl` files. The input also has certain
+          required formats for fine-tuning
+          [chat](https://platform.openai.com/docs/api-reference/fine-tuning/chat-input)
+          or
+          [completions](https://platform.openai.com/docs/api-reference/fine-tuning/completions-input)
+          models.
+        - The Batch API only supports `.jsonl` files up to 200 MB in size. The input
+          also has a specific required
+          [format](https://platform.openai.com/docs/api-reference/batch/request-input).
 
         Please [contact us](https://help.openai.com/) if you need to increase these
         storage limits.
@@ -87,14 +91,13 @@ class Files(SyncAPIResource):
         Args:
           file: The File object (not file name) to be uploaded.
 
-          purpose: The intended purpose of the uploaded file.
+          purpose: The intended purpose of the uploaded file. One of: - `assistants`: Used in the
+              Assistants API - `batch`: Used in the Batch API - `fine-tune`: Used for
+              fine-tuning - `vision`: Images used for vision fine-tuning - `user_data`:
+              Flexible file type for any purpose - `evals`: Used for eval data sets
 
-              Use "assistants" for
-              [Assistants](https://platform.openai.com/docs/api-reference/assistants) and
-              [Message](https://platform.openai.com/docs/api-reference/messages) files,
-              "vision" for Assistants image file inputs, "batch" for
-              [Batch API](https://platform.openai.com/docs/guides/batch), and "fine-tune" for
-              [Fine-tuning](https://platform.openai.com/docs/api-reference/fine-tuning).
+          expires_after: The expiration policy for a file. By default, files with `purpose=batch` expire
+              after 30 days and all other files are persisted until they are manually deleted.
 
           extra_headers: Send extra headers
 
@@ -108,6 +111,7 @@ class Files(SyncAPIResource):
             {
                 "file": file,
                 "purpose": purpose,
+                "expires_after": expires_after,
             }
         )
         files = extract_files(cast(Mapping[str, object], body), paths=[["file"]])
@@ -134,7 +138,7 @@ class Files(SyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileObject:
         """
         Returns information about a specific file.
@@ -161,18 +165,33 @@ class Files(SyncAPIResource):
     def list(
         self,
         *,
-        purpose: str | NotGiven = NOT_GIVEN,
+        after: str | Omit = omit,
+        limit: int | Omit = omit,
+        order: Literal["asc", "desc"] | Omit = omit,
+        purpose: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> SyncPage[FileObject]:
-        """
-        Returns a list of files that belong to the user's organization.
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> SyncCursorPage[FileObject]:
+        """Returns a list of files.
 
         Args:
+          after: A cursor for use in pagination.
+
+        `after` is an object ID that defines your place
+              in the list. For instance, if you make a list request and receive 100 objects,
+              ending with obj_foo, your subsequent call can include after=obj_foo in order to
+              fetch the next page of the list.
+
+          limit: A limit on the number of objects to be returned. Limit can range between 1 and
+              10,000, and the default is 10,000.
+
+          order: Sort order by the `created_at` timestamp of the objects. `asc` for ascending
+              order and `desc` for descending order.
+
           purpose: Only return files with the given purpose.
 
           extra_headers: Send extra headers
@@ -185,13 +204,21 @@ class Files(SyncAPIResource):
         """
         return self._get_api_list(
             "/files",
-            page=SyncPage[FileObject],
+            page=SyncCursorPage[FileObject],
             options=make_request_options(
                 extra_headers=extra_headers,
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"purpose": purpose}, file_list_params.FileListParams),
+                query=maybe_transform(
+                    {
+                        "after": after,
+                        "limit": limit,
+                        "order": order,
+                        "purpose": purpose,
+                    },
+                    file_list_params.FileListParams,
+                ),
             ),
             model=FileObject,
         )
@@ -205,10 +232,10 @@ class Files(SyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileDeleted:
         """
-        Delete a file.
+        Delete a file and remove it from all vector stores.
 
         Args:
           extra_headers: Send extra headers
@@ -238,7 +265,7 @@ class Files(SyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> _legacy_response.HttpxBinaryResponseContent:
         """
         Returns the contents of the specified file.
@@ -273,7 +300,7 @@ class Files(SyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> str:
         """
         Returns the contents of the specified file.
@@ -324,44 +351,55 @@ class Files(SyncAPIResource):
 class AsyncFiles(AsyncAPIResource):
     @cached_property
     def with_raw_response(self) -> AsyncFilesWithRawResponse:
+        """
+        This property can be used as a prefix for any HTTP method call to return
+        the raw response object instead of the parsed content.
+
+        For more information, see https://www.github.com/openai/openai-python#accessing-raw-response-data-eg-headers
+        """
         return AsyncFilesWithRawResponse(self)
 
     @cached_property
     def with_streaming_response(self) -> AsyncFilesWithStreamingResponse:
+        """
+        An alternative to `.with_raw_response` that doesn't eagerly read the response body.
+
+        For more information, see https://www.github.com/openai/openai-python#with_streaming_response
+        """
         return AsyncFilesWithStreamingResponse(self)
 
     async def create(
         self,
         *,
         file: FileTypes,
-        purpose: Literal["assistants", "batch", "fine-tune", "vision"],
+        purpose: FilePurpose,
+        expires_after: file_create_params.ExpiresAfter | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileObject:
         """Upload a file that can be used across various endpoints.
 
         Individual files can be
         up to 512 MB, and the size of all files uploaded by one organization can be up
-        to 100 GB.
+        to 1 TB.
 
-        The Assistants API supports files up to 2 million tokens and of specific file
-        types. See the
-        [Assistants Tools guide](https://platform.openai.com/docs/assistants/tools) for
-        details.
-
-        The Fine-tuning API only supports `.jsonl` files. The input also has certain
-        required formats for fine-tuning
-        [chat](https://platform.openai.com/docs/api-reference/fine-tuning/chat-input) or
-        [completions](https://platform.openai.com/docs/api-reference/fine-tuning/completions-input)
-        models.
-
-        The Batch API only supports `.jsonl` files up to 100 MB in size. The input also
-        has a specific required
-        [format](https://platform.openai.com/docs/api-reference/batch/request-input).
+        - The Assistants API supports files up to 2 million tokens and of specific file
+          types. See the
+          [Assistants Tools guide](https://platform.openai.com/docs/assistants/tools)
+          for details.
+        - The Fine-tuning API only supports `.jsonl` files. The input also has certain
+          required formats for fine-tuning
+          [chat](https://platform.openai.com/docs/api-reference/fine-tuning/chat-input)
+          or
+          [completions](https://platform.openai.com/docs/api-reference/fine-tuning/completions-input)
+          models.
+        - The Batch API only supports `.jsonl` files up to 200 MB in size. The input
+          also has a specific required
+          [format](https://platform.openai.com/docs/api-reference/batch/request-input).
 
         Please [contact us](https://help.openai.com/) if you need to increase these
         storage limits.
@@ -369,14 +407,13 @@ class AsyncFiles(AsyncAPIResource):
         Args:
           file: The File object (not file name) to be uploaded.
 
-          purpose: The intended purpose of the uploaded file.
+          purpose: The intended purpose of the uploaded file. One of: - `assistants`: Used in the
+              Assistants API - `batch`: Used in the Batch API - `fine-tune`: Used for
+              fine-tuning - `vision`: Images used for vision fine-tuning - `user_data`:
+              Flexible file type for any purpose - `evals`: Used for eval data sets
 
-              Use "assistants" for
-              [Assistants](https://platform.openai.com/docs/api-reference/assistants) and
-              [Message](https://platform.openai.com/docs/api-reference/messages) files,
-              "vision" for Assistants image file inputs, "batch" for
-              [Batch API](https://platform.openai.com/docs/guides/batch), and "fine-tune" for
-              [Fine-tuning](https://platform.openai.com/docs/api-reference/fine-tuning).
+          expires_after: The expiration policy for a file. By default, files with `purpose=batch` expire
+              after 30 days and all other files are persisted until they are manually deleted.
 
           extra_headers: Send extra headers
 
@@ -390,6 +427,7 @@ class AsyncFiles(AsyncAPIResource):
             {
                 "file": file,
                 "purpose": purpose,
+                "expires_after": expires_after,
             }
         )
         files = extract_files(cast(Mapping[str, object], body), paths=[["file"]])
@@ -416,7 +454,7 @@ class AsyncFiles(AsyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileObject:
         """
         Returns information about a specific file.
@@ -443,18 +481,33 @@ class AsyncFiles(AsyncAPIResource):
     def list(
         self,
         *,
-        purpose: str | NotGiven = NOT_GIVEN,
+        after: str | Omit = omit,
+        limit: int | Omit = omit,
+        order: Literal["asc", "desc"] | Omit = omit,
+        purpose: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> AsyncPaginator[FileObject, AsyncPage[FileObject]]:
-        """
-        Returns a list of files that belong to the user's organization.
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> AsyncPaginator[FileObject, AsyncCursorPage[FileObject]]:
+        """Returns a list of files.
 
         Args:
+          after: A cursor for use in pagination.
+
+        `after` is an object ID that defines your place
+              in the list. For instance, if you make a list request and receive 100 objects,
+              ending with obj_foo, your subsequent call can include after=obj_foo in order to
+              fetch the next page of the list.
+
+          limit: A limit on the number of objects to be returned. Limit can range between 1 and
+              10,000, and the default is 10,000.
+
+          order: Sort order by the `created_at` timestamp of the objects. `asc` for ascending
+              order and `desc` for descending order.
+
           purpose: Only return files with the given purpose.
 
           extra_headers: Send extra headers
@@ -467,13 +520,21 @@ class AsyncFiles(AsyncAPIResource):
         """
         return self._get_api_list(
             "/files",
-            page=AsyncPage[FileObject],
+            page=AsyncCursorPage[FileObject],
             options=make_request_options(
                 extra_headers=extra_headers,
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"purpose": purpose}, file_list_params.FileListParams),
+                query=maybe_transform(
+                    {
+                        "after": after,
+                        "limit": limit,
+                        "order": order,
+                        "purpose": purpose,
+                    },
+                    file_list_params.FileListParams,
+                ),
             ),
             model=FileObject,
         )
@@ -487,10 +548,10 @@ class AsyncFiles(AsyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> FileDeleted:
         """
-        Delete a file.
+        Delete a file and remove it from all vector stores.
 
         Args:
           extra_headers: Send extra headers
@@ -520,7 +581,7 @@ class AsyncFiles(AsyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> _legacy_response.HttpxBinaryResponseContent:
         """
         Returns the contents of the specified file.
@@ -555,7 +616,7 @@ class AsyncFiles(AsyncAPIResource):
         extra_headers: Headers | None = None,
         extra_query: Query | None = None,
         extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> str:
         """
         Returns the contents of the specified file.
@@ -624,7 +685,7 @@ class FilesWithRawResponse:
         )
         self.retrieve_content = (  # pyright: ignore[reportDeprecated]
             _legacy_response.to_raw_response_wrapper(
-                files.retrieve_content  # pyright: ignore[reportDeprecated],
+                files.retrieve_content,  # pyright: ignore[reportDeprecated],
             )
         )
 
@@ -650,7 +711,7 @@ class AsyncFilesWithRawResponse:
         )
         self.retrieve_content = (  # pyright: ignore[reportDeprecated]
             _legacy_response.async_to_raw_response_wrapper(
-                files.retrieve_content  # pyright: ignore[reportDeprecated],
+                files.retrieve_content,  # pyright: ignore[reportDeprecated],
             )
         )
 
@@ -677,7 +738,7 @@ class FilesWithStreamingResponse:
         )
         self.retrieve_content = (  # pyright: ignore[reportDeprecated]
             to_streamed_response_wrapper(
-                files.retrieve_content  # pyright: ignore[reportDeprecated],
+                files.retrieve_content,  # pyright: ignore[reportDeprecated],
             )
         )
 
@@ -704,6 +765,6 @@ class AsyncFilesWithStreamingResponse:
         )
         self.retrieve_content = (  # pyright: ignore[reportDeprecated]
             async_to_streamed_response_wrapper(
-                files.retrieve_content  # pyright: ignore[reportDeprecated],
+                files.retrieve_content,  # pyright: ignore[reportDeprecated],
             )
         )

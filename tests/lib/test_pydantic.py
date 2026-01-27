@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from enum import Enum
+
+from pydantic import Field, BaseModel
 from inline_snapshot import snapshot
 
 import openai
-from openai._compat import PYDANTIC_V2
+from openai._compat import PYDANTIC_V1
+from openai.lib._pydantic import to_strict_json_schema
 
 from .schema_types.query import Query
 
 
 def test_most_types() -> None:
-    if PYDANTIC_V2:
+    if not PYDANTIC_V1:
         assert openai.pydantic_function_tool(Query)["function"] == snapshot(
             {
                 "name": "Query",
@@ -59,6 +63,7 @@ def test_most_types() -> None:
                         "Table": {"enum": ["orders", "customers", "products"], "title": "Table", "type": "string"},
                     },
                     "properties": {
+                        "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
                         "table_name": {"$ref": "#/$defs/Table"},
                         "columns": {
                             "items": {"$ref": "#/$defs/Column"},
@@ -72,7 +77,7 @@ def test_most_types() -> None:
                         },
                         "order_by": {"$ref": "#/$defs/OrderBy"},
                     },
-                    "required": ["table_name", "columns", "conditions", "order_by"],
+                    "required": ["name", "table_name", "columns", "conditions", "order_by"],
                     "title": "Query",
                     "type": "object",
                     "additionalProperties": False,
@@ -88,6 +93,7 @@ def test_most_types() -> None:
                     "title": "Query",
                     "type": "object",
                     "properties": {
+                        "name": {"title": "Name", "type": "string"},
                         "table_name": {"$ref": "#/definitions/Table"},
                         "columns": {"type": "array", "items": {"$ref": "#/definitions/Column"}},
                         "conditions": {
@@ -97,7 +103,7 @@ def test_most_types() -> None:
                         },
                         "order_by": {"$ref": "#/definitions/OrderBy"},
                     },
-                    "required": ["table_name", "columns", "conditions", "order_by"],
+                    "required": ["name", "table_name", "columns", "conditions", "order_by"],
                     "definitions": {
                         "Table": {
                             "title": "Table",
@@ -130,6 +136,7 @@ def test_most_types() -> None:
                             "type": "object",
                             "properties": {"column_name": {"title": "Column Name", "type": "string"}},
                             "required": ["column_name"],
+                            "additionalProperties": False,
                         },
                         "Condition": {
                             "title": "Condition",
@@ -147,6 +154,7 @@ def test_most_types() -> None:
                                 },
                             },
                             "required": ["column", "operator", "value"],
+                            "additionalProperties": False,
                         },
                         "OrderBy": {
                             "title": "OrderBy",
@@ -157,5 +165,247 @@ def test_most_types() -> None:
                     },
                     "additionalProperties": False,
                 },
+            }
+        )
+
+
+class Color(Enum):
+    RED = "red"
+    BLUE = "blue"
+    GREEN = "green"
+
+
+class ColorDetection(BaseModel):
+    color: Color = Field(description="The detected color")
+    hex_color_code: str = Field(description="The hex color code of the detected color")
+
+
+def test_enums() -> None:
+    if not PYDANTIC_V1:
+        assert openai.pydantic_function_tool(ColorDetection)["function"] == snapshot(
+            {
+                "name": "ColorDetection",
+                "strict": True,
+                "parameters": {
+                    "$defs": {"Color": {"enum": ["red", "blue", "green"], "title": "Color", "type": "string"}},
+                    "properties": {
+                        "color": {
+                            "description": "The detected color",
+                            "enum": ["red", "blue", "green"],
+                            "title": "Color",
+                            "type": "string",
+                        },
+                        "hex_color_code": {
+                            "description": "The hex color code of the detected color",
+                            "title": "Hex Color Code",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["color", "hex_color_code"],
+                    "title": "ColorDetection",
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+            }
+        )
+    else:
+        assert openai.pydantic_function_tool(ColorDetection)["function"] == snapshot(
+            {
+                "name": "ColorDetection",
+                "strict": True,
+                "parameters": {
+                    "properties": {
+                        "color": {
+                            "description": "The detected color",
+                            "title": "Color",
+                            "enum": ["red", "blue", "green"],
+                        },
+                        "hex_color_code": {
+                            "description": "The hex color code of the detected color",
+                            "title": "Hex Color Code",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["color", "hex_color_code"],
+                    "title": "ColorDetection",
+                    "definitions": {
+                        "Color": {"title": "Color", "description": "An enumeration.", "enum": ["red", "blue", "green"]}
+                    },
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+            }
+        )
+
+
+class Star(BaseModel):
+    name: str = Field(description="The name of the star.")
+
+
+class Galaxy(BaseModel):
+    name: str = Field(description="The name of the galaxy.")
+    largest_star: Star = Field(description="The largest star in the galaxy.")
+
+
+class Universe(BaseModel):
+    name: str = Field(description="The name of the universe.")
+    galaxy: Galaxy = Field(description="A galaxy in the universe.")
+
+
+def test_nested_inline_ref_expansion() -> None:
+    if not PYDANTIC_V1:
+        assert to_strict_json_schema(Universe) == snapshot(
+            {
+                "title": "Universe",
+                "type": "object",
+                "$defs": {
+                    "Star": {
+                        "title": "Star",
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "title": "Name",
+                                "description": "The name of the star.",
+                            }
+                        },
+                        "required": ["name"],
+                        "additionalProperties": False,
+                    },
+                    "Galaxy": {
+                        "title": "Galaxy",
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "title": "Name",
+                                "description": "The name of the galaxy.",
+                            },
+                            "largest_star": {
+                                "title": "Star",
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "title": "Name",
+                                        "description": "The name of the star.",
+                                    }
+                                },
+                                "required": ["name"],
+                                "description": "The largest star in the galaxy.",
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["name", "largest_star"],
+                        "additionalProperties": False,
+                    },
+                },
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "The name of the universe.",
+                    },
+                    "galaxy": {
+                        "title": "Galaxy",
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "title": "Name",
+                                "description": "The name of the galaxy.",
+                            },
+                            "largest_star": {
+                                "title": "Star",
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "title": "Name",
+                                        "description": "The name of the star.",
+                                    }
+                                },
+                                "required": ["name"],
+                                "description": "The largest star in the galaxy.",
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["name", "largest_star"],
+                        "description": "A galaxy in the universe.",
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["name", "galaxy"],
+                "additionalProperties": False,
+            }
+        )
+    else:
+        assert to_strict_json_schema(Universe) == snapshot(
+            {
+                "title": "Universe",
+                "type": "object",
+                "definitions": {
+                    "Star": {
+                        "title": "Star",
+                        "type": "object",
+                        "properties": {
+                            "name": {"title": "Name", "description": "The name of the star.", "type": "string"}
+                        },
+                        "required": ["name"],
+                        "additionalProperties": False,
+                    },
+                    "Galaxy": {
+                        "title": "Galaxy",
+                        "type": "object",
+                        "properties": {
+                            "name": {"title": "Name", "description": "The name of the galaxy.", "type": "string"},
+                            "largest_star": {
+                                "title": "Largest Star",
+                                "description": "The largest star in the galaxy.",
+                                "type": "object",
+                                "properties": {
+                                    "name": {"title": "Name", "description": "The name of the star.", "type": "string"}
+                                },
+                                "required": ["name"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["name", "largest_star"],
+                        "additionalProperties": False,
+                    },
+                },
+                "properties": {
+                    "name": {
+                        "title": "Name",
+                        "description": "The name of the universe.",
+                        "type": "string",
+                    },
+                    "galaxy": {
+                        "title": "Galaxy",
+                        "description": "A galaxy in the universe.",
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "title": "Name",
+                                "description": "The name of the galaxy.",
+                                "type": "string",
+                            },
+                            "largest_star": {
+                                "title": "Largest Star",
+                                "description": "The largest star in the galaxy.",
+                                "type": "object",
+                                "properties": {
+                                    "name": {"title": "Name", "description": "The name of the star.", "type": "string"}
+                                },
+                                "required": ["name"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["name", "largest_star"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["name", "galaxy"],
+                "additionalProperties": False,
             }
         )
